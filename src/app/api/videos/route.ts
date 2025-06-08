@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
     const channelUrl = searchParams.get('channelUrl');
     const sortMode = searchParams.get('sortMode');
     const maxVideos = Number(searchParams.get('maxVideos')) || 50;
+    const filterShorts = searchParams.get('filterShorts') === 'true';
 
     if (!channelUrl) {
       return NextResponse.json({ error: 'Missing channelUrl param' }, { status: 400 });
@@ -71,30 +72,38 @@ export async function GET(request: NextRequest) {
     // 4. Fetch videos for that channel
     const videos = await getChannelVideos(channelId, maxVideos);
 
-    // 5. For each video, fetch stats (views & likes)
+    // 5. For each video, fetch stats (views & likes) and duration
     const videosWithStats = await Promise.all(
       videos.map(async (v: YouTubeVideoItem) => {
-        const stats = await getVideoStats(v.id.videoId);
+        const data = await getVideoStats(v.id.videoId);
+        const durationInSeconds = parseDuration(data.contentDetails.duration || '');
         return {
           title: v.snippet.title,
           videoId: v.id.videoId,
-          views: Number(stats.viewCount || 0),
-          likes: Number(stats.likeCount || 0),
+          views: Number(data.statistics.viewCount || 0),
+          likes: Number(data.statistics.likeCount || 0),
+          duration: durationInSeconds,
         };
       })
     );
 
-    // 6. Sort them
+    // 6. Filter out shorts if requested (videos 3 minutes or less = 180 seconds)
+    let filteredVideos = videosWithStats;
+    if (filterShorts) {
+      filteredVideos = videosWithStats.filter(video => video.duration > 180);
+    }
+
+    // 7. Sort them
     let sorted;
     if (sortMode === 'ratio') {
       // sort by like:views ratio
-      sorted = videosWithStats.sort((a, b) => b.likes / b.views - a.likes / a.views);
+      sorted = filteredVideos.sort((a, b) => b.likes / b.views - a.likes / a.views);
     } else {
       // default to sort by likes
-      sorted = videosWithStats.sort((a, b) => b.likes - a.likes);
+      sorted = filteredVideos.sort((a, b) => b.likes - a.likes);
     }
 
-    // 7. Return the data as JSON
+    // 8. Return the data as JSON
     return NextResponse.json({ data: sorted }, { status: 200 });
   } catch (err: unknown) {
     const error = err as ApiError;
@@ -211,7 +220,24 @@ async function getChannelVideos(channelId: string, maxVideos: number = 50) {
 }
 
 async function getVideoStats(videoId: string) {
-  const url = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=statistics&key=${process.env.YOUTUBE_API_KEY}`;
+  const url = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=statistics,contentDetails&key=${process.env.YOUTUBE_API_KEY}`;
   const data = await fetchYouTubeAPI(url);
-  return data.items?.[0]?.statistics || {};
+  return {
+    statistics: data.items?.[0]?.statistics || {},
+    contentDetails: data.items?.[0]?.contentDetails || {}
+  };
+}
+
+// Function to parse YouTube duration from ISO 8601 format (PT1H2M3S) to seconds
+function parseDuration(duration: string): number {
+  if (!duration) return 0;
+  
+  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!match) return 0;
+  
+  const hours = parseInt(match[1] || '0', 10);
+  const minutes = parseInt(match[2] || '0', 10);
+  const seconds = parseInt(match[3] || '0', 10);
+  
+  return hours * 3600 + minutes * 60 + seconds;
 }

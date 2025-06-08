@@ -15,6 +15,7 @@ interface Video {
   videoId: string;
   views: number;
   likes: number;
+  duration: number;
 }
 
 export default function HomePage() {
@@ -23,6 +24,19 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [maxVideos, setMaxVideos] = useState(50);
+  const [filterShorts, setFilterShorts] = useState(false);
+
+  const formatDuration = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    } else {
+      return `${minutes}:${secs.toString().padStart(2, '0')}`;
+    }
+  };
 
   const getSliderBackground = (value: number) => {
     const percentage = ((value - 50) / (350 - 50)) * 100;
@@ -39,6 +53,7 @@ export default function HomePage() {
         channelUrl: channelUrl.trim(),
         sortMode: sortMode === "ratio" ? "ratio" : "likes",
         maxVideos: maxVideos.toString(),
+        filterShorts: filterShorts.toString(),
       });
 
       const res = await fetch(`/api/videos?${queryParams}`);
@@ -130,6 +145,31 @@ export default function HomePage() {
                 </div>
               </div>
 
+              {/* Filter shorts toggle */}
+              <div className="w-full mt-3">
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  <div className="relative">
+                    <div className="w-6 h-6 border-[3px] border-gray-900 rounded-sm bg-white relative">
+                      <div className={`w-full h-full absolute inset-0 bg-red-500 rounded-sm transition-opacity ${filterShorts ? 'opacity-100' : 'opacity-0'}`}></div>
+                      {filterShorts && (
+                        <svg className="w-4 h-4 text-white absolute inset-0 m-auto" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={filterShorts}
+                      onChange={(e) => setFilterShorts(e.target.checked)}
+                      className="sr-only"
+                    />
+                  </div>
+                  <span className="text-gray-700">
+                    Filter out short videos (3 minutes or less)
+                  </span>
+                </label>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="relative group h-full">
                   <div className="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0"></div>
@@ -182,6 +222,7 @@ export default function HomePage() {
                   <thead>
                     <tr className="border-b-[3px] border-red-600">
                       <th className="px-2 sm:px-4 py-3 text-left font-bold text-gray-900 text-xs sm:text-base">Video Title</th>
+                      <th className="px-2 sm:px-4 py-3 text-left font-bold text-gray-900 text-xs sm:text-base">Duration</th>
                       <th className="px-2 sm:px-4 py-3 text-left font-bold text-gray-900 text-xs sm:text-base">Likes</th>
                       <th className="px-2 sm:px-4 py-3 text-left font-bold text-gray-900 text-xs sm:text-base">Views</th>
                       <th className="px-2 sm:px-4 py-3 text-left font-bold text-gray-900 text-xs sm:text-base">Ratio (%)</th>
@@ -205,6 +246,7 @@ export default function HomePage() {
                               {decodeHtmlEntities(v.title)}
                             </a>
                           </td>
+                          <td className="px-2 sm:px-4 py-3 text-gray-900 text-xs sm:text-base">{formatDuration(v.duration)}</td>
                           <td className="px-2 sm:px-4 py-3 font-medium text-gray-900 text-xs sm:text-base">{v.likes.toLocaleString()}</td>
                           <td className="px-2 sm:px-4 py-3 text-gray-900 text-xs sm:text-base">{v.views.toLocaleString()}</td>
                           <td className="px-2 sm:px-4 py-3 font-medium text-gray-900 text-xs sm:text-base">{ratio}%</td>
